@@ -1,0 +1,30 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ServerSnapshot {
+  id           Int      @id @default(autoincrement())
+  serverId     String // ex: "NEXUS/nexus" or "6gk4e4"
+  code         String // ex: "6gk4e4"
+  hostname     String
+  clients      Int
+  maxClients   Int
+  nexusCount   Int      @default(0)
+  nexusPlayers String? // JSON: [{id,name,ping}]
+  createdAt    DateTime @default(now())
+
+  @@index([serverId, createdAt])
+  @@index([code, createdAt])
+}

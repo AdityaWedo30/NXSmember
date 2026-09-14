@@ -1,0 +1,13 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Redirect cron vercel.json -> Netlify tidak support, gunakan cron eksternal
+# Opsi: hit https://domainmu/api/cron?key=CRON_SECRET tiap 15 menit via cron-job.org
