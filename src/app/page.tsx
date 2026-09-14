@@ -36,8 +36,20 @@ type RawRow = {
   createdAt: string;
 };
 
-const POLL_LIVE_MS = 5 * 60 * 1000; // tabel NEXUS live refresh 5 menit
-const POLL_GRAPH_MS = 15 * 60 * 1000; // grafik NEXUS: baca/sample + simpan history tiap 15 menit
+const POLL_LIVE_MS = 3 * 60 * 1000; // tabel NEXUS live refresh 3 menit — sinkron wall-clock
+const POLL_GRAPH_MS = 15 * 60 * 1000; // grafik NEXUS: baca/sample + simpan history tiap 15 menit — sinkron wall-clock
+
+// Sinkron ke boundary epoch agar semua pengunjung punya jadwal & countdown yang sama
+// dan tidak reset saat refresh. 3m -> 00:00,00:03,00:06... 15m -> 00:00,00:15,00:30,00:45 (UTC epoch)
+function getNextBoundary(intervalMs: number, now = Date.now()) {
+  return Math.floor(now / intervalMs) * intervalMs + intervalMs;
+}
+function getNextLiveBoundary(now = Date.now()) {
+  return getNextBoundary(POLL_LIVE_MS, now);
+}
+function getNextGraphBoundary(now = Date.now()) {
+  return getNextBoundary(POLL_GRAPH_MS, now);
+}
 
 function fmtCountdown(ms: number) {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -56,8 +68,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
-  const [nextLiveAt, setNextLiveAt] = useState<number>(Date.now() + POLL_LIVE_MS);
-  const [nextGraphAt, setNextGraphAt] = useState<number>(Date.now() + POLL_GRAPH_MS);
+  const [nextLiveAt, setNextLiveAt] = useState<number>(() => getNextLiveBoundary());
+  const [nextGraphAt, setNextGraphAt] = useState<number>(() => getNextGraphBoundary());
   const [nowTick, setNowTick] = useState<number>(Date.now());
 
   const fetchServer = useCallback(async () => {
@@ -118,46 +130,48 @@ export default function Home() {
     setLoading(true);
     Promise.all([fetchServer(), fetchHistory()]).finally(() => setLoading(false));
 
-    // countdown init
-    const now = Date.now();
-    setNextLiveAt(now + POLL_LIVE_MS);
-    setNextGraphAt(now + POLL_GRAPH_MS);
+    // countdown sinkron wall-clock -> sama untuk semua pengunjung, tidak reset saat refresh
+    setNextLiveAt(getNextLiveBoundary());
+    setNextGraphAt(getNextGraphBoundary());
 
-    // live NEXUS 5m, grafik NEXUS 15m (history hanya NEXUS)
+    // live 3m, grafik 15m — jadwal wall-clock sinkron (history hanya NEXUS)
     let t1: ReturnType<typeof setTimeout>;
     let t2: ReturnType<typeof setTimeout>;
     let t3: ReturnType<typeof setTimeout>;
     const loopServer = () => {
+      const delay = Math.max(500, getNextLiveBoundary() - Date.now());
       t1 = setTimeout(async () => {
         await fetchServer();
-        setNextLiveAt(Date.now() + POLL_LIVE_MS);
+        setNextLiveAt(getNextLiveBoundary());
         loopServer();
-      }, POLL_LIVE_MS);
+      }, delay);
     };
     const loopHistory = () => {
+      const delay = Math.max(500, getNextGraphBoundary() - Date.now());
       t2 = setTimeout(async () => {
         await fetchHistory();
         loopHistory();
-      }, POLL_GRAPH_MS);
+      }, delay);
     };
     const loopSave = () => {
+      const delay = Math.max(500, getNextGraphBoundary() - Date.now());
       t3 = setTimeout(async () => {
         await saveAndRefresh();
-        setNextGraphAt(Date.now() + POLL_GRAPH_MS);
+        setNextGraphAt(getNextGraphBoundary());
         await fetchHistory();
         loopSave();
-      }, POLL_GRAPH_MS);
+      }, delay);
     };
-    // save awal untuk isi grafik jika kosong, lalu polling (live 5m, grafik 15m)
-    saveAndRefresh().then(() => setNextGraphAt(Date.now() + POLL_GRAPH_MS));
-    fetchServer().then(() => setNextLiveAt(Date.now() + POLL_LIVE_MS));
+    // fetch awal agar UI tidak kosong; countdown tetap ke boundary (bukan now+interval)
+    fetchServer().then(() => setNextLiveAt(getNextLiveBoundary()));
+    saveAndRefresh().then(() => setNextGraphAt(getNextGraphBoundary()));
     loopServer();
     loopHistory();
     loopSave();
 
     const onVis = () => {
       if (document.visibilityState === "visible") {
-        fetchServer().then(() => setNextLiveAt(Date.now() + POLL_LIVE_MS));
+        fetchServer().then(() => setNextLiveAt(getNextLiveBoundary()));
         fetchHistory();
       }
     };
@@ -178,7 +192,7 @@ export default function Home() {
     return server.players.filter((p) => p.name.toLowerCase().includes(s));
   }, [server?.players, q]);
 
-  // Tabel Snapshot = live NEXUS saja (bukan history DB), refresh tiap 5 menit via fetchServer
+  // Tabel Snapshot = live NEXUS saja (bukan history DB), refresh tiap 3 menit via fetchServer (sinkron boundary)
   const nexusLive = useMemo(() => {
     if (!server?.players) return [];
     return server.players.filter((p) => p.name.toLowerCase().includes("nexus"));
@@ -265,7 +279,7 @@ export default function Home() {
 
         </section>
 
-        {/* tabel NEXUS live — bukan history DB, refresh tiap 5 menit + saat kembali ke tab */}
+        {/* tabel NEXUS live — bukan history DB, refresh tiap 3 menit (sinkron wall-clock) + saat kembali ke tab */}
         <section className="rounded-xl border border-sky-900/60 bg-sky-950/30 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">NEXUS Aktif — live (nama mengandung &quot;nexus&quot;) <span className="font-mono text-xs font-normal text-slate-400">• {fmtCountdown(nextLiveAt - nowTick)}</span></h2>

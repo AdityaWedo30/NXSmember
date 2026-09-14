@@ -74,11 +74,36 @@ export async function GET(req: Request) {
 }
 
 // Manual trigger: POST {serverId, code} -> fetch + save snapshot (dipakai cron & tombol)
+// Dedup: kalau semua client hit boundary yang sama, hanya 1 write per bucket 15m (+ guard <60s) agar grafik tidak double
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const serverId = body.serverId ?? "NEXUS/nexus";
     const code = body.code ?? "6gk4e4";
+    const force = body.force === true || body.force === "1" || new URL(req.url).searchParams.get("force") === "1";
+    if (!force) {
+      const last = await prisma.serverSnapshot.findFirst({
+        where: { code, serverId },
+        orderBy: { createdAt: "desc" },
+      });
+      if (last) {
+        const ageMs = Date.now() - new Date(last.createdAt).getTime();
+        if (ageMs < 60 * 1000) {
+          return NextResponse.json({ ok: true, skipped: true, reason: "too soon (<60s)", last });
+        }
+        // satu snapshot per bucket 15m (wall-clock UTC) — cegah N pengunjung nulis N row di boundary sama
+        const bucketOf = (d: Date) => {
+          const x = new Date(d);
+          x.setMinutes(Math.floor(x.getMinutes() / 15) * 15, 0, 0);
+          return x.toISOString();
+        };
+        const nowBucket = bucketOf(new Date());
+        const lastBucket = bucketOf(new Date(last.createdAt));
+        if (nowBucket === lastBucket) {
+          return NextResponse.json({ ok: true, skipped: true, reason: "bucket 15m already filled", last });
+        }
+      }
+    }
     const url = `https://frontend.cfx-services.net/api/servers/single/${code}`;
     const res = await fetch(url, { headers: { "User-Agent": "FiveM-Monitor/1.0" }, cache: "no-store" });
     if (!res.ok) return NextResponse.json({ error: `fetch ${res.status}` }, { status: 502 });
