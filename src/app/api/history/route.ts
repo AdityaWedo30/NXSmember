@@ -24,12 +24,12 @@ export async function GET(req: Request) {
     take: 5000,
   });
 
-  // Grafik HANYA NEXUS — max saja per 15 menit (baca/sampling tiap 15 menit)
+  // Grafik HANYA NEXUS — max saja per 10 menit (baca/sampling tiap 10 menit)
   const buckets = new Map<string, { max: number; ts: string }>();
   for (const r of rows) {
     const v = (r as { nexusCount?: number }).nexusCount ?? 0;
     const d = new Date(r.createdAt);
-    d.setMinutes(Math.floor(d.getMinutes() / 15) * 15, 0, 0);
+    d.setMinutes(Math.floor(d.getMinutes() / 10) * 10, 0, 0);
     const key = d.toISOString();
     const b = buckets.get(key) ?? { max: -1, ts: key };
     b.max = Math.max(b.max, v);
@@ -74,7 +74,7 @@ export async function GET(req: Request) {
 }
 
 // Manual trigger: POST {serverId, code} -> fetch + save snapshot (dipakai cron & tombol)
-// Dedup: kalau semua client hit boundary yang sama, hanya 1 write per bucket 15m (+ guard <60s) agar grafik tidak double
+// Dedup: kalau semua client hit boundary yang sama, hanya 1 write per bucket 10m (+ guard <60s) agar grafik tidak double
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -91,16 +91,16 @@ export async function POST(req: Request) {
         if (ageMs < 60 * 1000) {
           return NextResponse.json({ ok: true, skipped: true, reason: "too soon (<60s)", last });
         }
-        // satu snapshot per bucket 15m (wall-clock UTC) — cegah N pengunjung nulis N row di boundary sama
+        // satu snapshot per bucket 10m (wall-clock UTC) — cegah N pengunjung nulis N row di boundary sama
         const bucketOf = (d: Date) => {
           const x = new Date(d);
-          x.setMinutes(Math.floor(x.getMinutes() / 15) * 15, 0, 0);
+          x.setMinutes(Math.floor(x.getMinutes() / 10) * 10, 0, 0);
           return x.toISOString();
         };
         const nowBucket = bucketOf(new Date());
         const lastBucket = bucketOf(new Date(last.createdAt));
         if (nowBucket === lastBucket) {
-          return NextResponse.json({ ok: true, skipped: true, reason: "bucket 15m already filled", last });
+          return NextResponse.json({ ok: true, skipped: true, reason: "bucket 10m already filled", last });
         }
       }
     }

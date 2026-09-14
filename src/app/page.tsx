@@ -37,10 +37,10 @@ type RawRow = {
 };
 
 const POLL_LIVE_MS = 3 * 60 * 1000; // tabel NEXUS live refresh 3 menit — sinkron wall-clock
-const POLL_GRAPH_MS = 15 * 60 * 1000; // grafik NEXUS: baca/sample + simpan history tiap 15 menit — sinkron wall-clock
+const POLL_GRAPH_MS = 10 * 60 * 1000; // grafik NEXUS: baca/sample + simpan history tiap 10 menit — sinkron wall-clock
 
 // Sinkron ke boundary epoch agar semua pengunjung punya jadwal & countdown yang sama
-// dan tidak reset saat refresh. 3m -> 00:00,00:03,00:06... 15m -> 00:00,00:15,00:30,00:45 (UTC epoch)
+// dan tidak reset saat refresh. 3m -> 00:00,00:03,00:06... 10m -> 00:00,00:10,00:20,00:30,00:40,00:50 (UTC epoch)
 function getNextBoundary(intervalMs: number, now = Date.now()) {
   return Math.floor(now / intervalMs) * intervalMs + intervalMs;
 }
@@ -242,10 +242,10 @@ export default function Home() {
           <div className="mt-1 text-xs text-slate-400">{server?.clients ?? 0} player • slot {server?.maxClients ?? 2048}</div>
         </section>
 
-        {/* grafik hanya NEXUS per 15 menit */}
+        {/* grafik hanya NEXUS per 10 menit */}
         <section className="rounded-xl border border-sky-900/60 bg-sky-950/30 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">Grafik NEXUS — jumlah player NEXUS per 15 menit (kode 6gk4e4) <span className="font-mono text-xs font-normal text-slate-400">• refresh {fmtCountdown(nextGraphAt - nowTick)}</span></h2>
+            <h2 className="text-sm font-semibold">Grafik NEXUS — jumlah player NEXUS per 10 menit (kode 6gk4e4) <span className="font-mono text-xs font-normal text-slate-400">• refresh {fmtCountdown(nextGraphAt - nowTick)}</span></h2>
             <div className="flex gap-1">
               {(["24h", "7d", "30d", "all"] as const).map((k) => (
                 <button
@@ -261,7 +261,7 @@ export default function Home() {
           <div className="h-[320px] w-full">
             {hourly.length === 0 ? (
               <div className="flex h-full items-center justify-center text-sm text-slate-400">
-                Belum ada history NEXUS. Grafik mencatat jumlah NEXUS per 15 menit. Endpoint: <code className="mx-1 rounded bg-slate-800 px-1">/api/cron</code> (Vercel Cron */15) + autosave frontend 15m.
+                Belum ada history NEXUS. Grafik mencatat jumlah NEXUS per 10 menit. Endpoint: <code className="mx-1 rounded bg-slate-800 px-1">/api/cron</code> (Vercel Cron */10) + autosave frontend 10m.
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
